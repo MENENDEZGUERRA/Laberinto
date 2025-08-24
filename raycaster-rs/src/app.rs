@@ -36,7 +36,7 @@ pub fn run() -> Result<()> {
     });
     let mut player = Player::from_world_spawn(&world);
 
-    // Audio (no crítico si falla)
+    // Audio 
     let mut audio = Audio::new().ok();
     if let Some(a) = &mut audio {
         let _ = a.play_music_loop("assets/audio/bgm.ogg");
@@ -134,7 +134,7 @@ pub fn run() -> Result<()> {
                 if ui.mode == GameMode::Playing {
                     player.update(&world, &mut input, dt);
 
-                    // Condición de éxito: tocar celda de salida
+                    // Condición de éxito
                     if world.is_on_exit_tile(player.pos.x, player.pos.y) {
                         ui.mode = GameMode::Success;
                         if let Some(a) = &mut audio {

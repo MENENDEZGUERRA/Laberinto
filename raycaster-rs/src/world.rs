@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Result};
 use glam::{IVec2, Vec2};
-use image::GenericImageView;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
@@ -8,17 +7,17 @@ use std::fs;
 pub struct Texture {
     pub w: u32,
     pub h: u32,
-    pub pixels: Vec<u32>, // RGBA8 empaquetado
+    pub pixels: Vec<u32>, // RGBA8 empaquetado (little-endian)
 }
 
 impl Texture {
     pub fn from_file(path: &str) -> Result<Self> {
-        let img = image::open(path)?;
-        let img = img.to_rgba8();
-        let (w, h) = img.dimensions();
-        let pixels = img
-            .pixels()
-            .map(|p| u32::from_le_bytes([p[0], p[1], p[2], p[3]]))
+        let img = image::open(path)?.to_rgba8();
+        let (w, h) = (img.width(), img.height());
+        let raw = img.into_raw(); // Vec<u8> RGBA
+        let pixels = raw
+            .chunks_exact(4)
+            .map(|px| u32::from_le_bytes([px[0], px[1], px[2], px[3]]))
             .collect();
         Ok(Self { w, h, pixels })
     }
@@ -28,7 +27,7 @@ impl Texture {
 pub struct TileMap {
     pub width: i32,
     pub height: i32,
-    pub tiles: Vec<u8>, // 0 = vacío, >0 = pared id
+    pub tiles: Vec<u8>, 
 }
 
 impl TileMap {
@@ -42,7 +41,8 @@ impl TileMap {
 
     #[inline]
     pub fn tile(&self, x: i32, y: i32) -> u8 {
-        self.idx(x, y).map(|i| self.tiles[i]).unwrap_or(1) // fuera del mapa = pared
+        // NOTA: fuera del mapa = pared (id 1)
+        self.idx(x, y).map(|i| self.tiles[i]).unwrap_or(1)
     }
 }
 
@@ -85,11 +85,7 @@ impl World {
             }
         }
         Self {
-            map: TileMap {
-                width,
-                height,
-                tiles,
-            },
+            map: TileMap { width, height, tiles },
             textures: HashMap::new(),
             player_spawn: Vec2::new(2.5, 2.5),
             player_dir_deg: 0.0,
@@ -124,23 +120,25 @@ impl World {
                 }
             }
         }
+
+        // Cargar TODAS las texturas
         let mut textures = HashMap::new();
         if let Some(map) = lvl.textures {
-            for (k, v) in map.into_iter() {
-                let id: u8 = k.parse().unwrap_or(0);
-                if id > 0 {
+            for (k, v) in map {
+                if let Ok(id) = k.parse::<u8>() {
                     if let Ok(tex) = Texture::from_file(&v) {
                         textures.insert(id, tex);
+                    } else {
+                        eprintln!("WARN: no se pudo cargar textura id {} desde '{}'", id, v);
                     }
+                } else {
+                    eprintln!("WARN: id de textura inválido: '{}'", k);
                 }
             }
         }
+
         Ok(Self {
-            map: TileMap {
-                width,
-                height,
-                tiles,
-            },
+            map: TileMap { width, height, tiles },
             textures,
             player_spawn: Vec2::new(lvl.player_start.x, lvl.player_start.y),
             player_dir_deg: lvl.player_start.dir_deg,

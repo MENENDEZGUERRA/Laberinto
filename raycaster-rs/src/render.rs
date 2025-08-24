@@ -14,30 +14,32 @@ pub fn draw_frame(
     ui: &UiState,
     _input: &mut InputState,
 ) {
-    // Fondo
-    clear_color(frame, 0x202028ff);
+    // Limpia
+    clear_color(frame, 0x000000ff);
 
     match ui.mode {
         GameMode::Welcome => {
-            draw_centered_text(frame, "RAYCASTER RS", 20);
+            draw_centered_text(frame, "THE BINDING OF ISAAC: CUTRE EDITION", 20);
             draw_text(frame, 40, 70, "ENTER para jugar");
             draw_text(frame, 40, 85, "WASD: mover, Flechas: rotar");
             draw_text(frame, 40, 100, "ESC: capturar/soltar mouse");
             draw_text(frame, 40, 115, "1/2: cambiar nivel");
         }
         GameMode::Playing | GameMode::Success => {
-            // Suelo y cielo
-            draw_hsplit(frame, 0, HEIGHT as i32 / 2, 0x303040ff);
-            draw_hsplit(frame, HEIGHT as i32 / 2, HEIGHT as i32, 0x0f0f10ff);
+            // 1) Cielo negro (mitad superior)
+            draw_hsplit(frame, 0, (HEIGHT as i32) / 2, 0x000000ff);
 
-            // Ray casting paredes
+            // 2) Piso texturizado (mitad inferior, floor-casting)
+            draw_textured_floor(frame, world, player);
+
+            // 3) Paredes texturizadas encima del piso
             let mut zbuf = [0.0f32; WIDTH];
-            cast_walls(frame, world, player, &mut zbuf);
+            cast_walls_textured(frame, world, player, &mut zbuf);
 
-            // Minimap
+            // 4) Minimap
             draw_minimap(frame, world, player);
 
-            // HUD
+            // 5) HUD
             draw_text(frame, 4, 4, &format!("FPS:{}", ui.fps as i32));
 
             if ui.mode == GameMode::Success {
@@ -66,7 +68,68 @@ fn draw_hsplit(frame: &mut [u8], y0: i32, y1: i32, color: u32) {
     }
 }
 
-fn cast_walls(frame: &mut [u8], world: &World, player: &Player, zbuf: &mut [f32; WIDTH]) {
+/* A PARTIR DE AQUÍ INICIA MI AVENTURA DE HACER EL SUELO */
+
+fn draw_textured_floor(frame: &mut [u8], world: &World, player: &Player) {
+    let floor_tex = match world.textures.get(&0u8) {
+        Some(t) => t,
+        None => {
+            // Color de respaldo
+            draw_hsplit(frame, (HEIGHT as i32) / 2, HEIGHT as i32, 0x101010ff);
+            return;
+        }
+    };
+
+    let tex_w = floor_tex.w as i32;
+    let tex_h = floor_tex.h as i32;
+
+    let ray_dir_left = player.dir - player.plane;
+    let ray_dir_right = player.dir + player.plane;
+
+    let half_h = (HEIGHT as i32) / 2;
+    let pos_z = 0.5 * (HEIGHT as f32);
+
+    for y in half_h..(HEIGHT as i32) {
+        let p = (y - half_h) as f32;
+        if p <= 0.0 {
+            continue;
+        }
+        let row_dist = pos_z / p;
+
+        let step = (ray_dir_right - ray_dir_left) * (row_dist / (WIDTH as f32));
+
+        let mut floor_pos = player.pos + ray_dir_left * row_dist;
+
+        let row_start = (y as usize) * WIDTH * 4;
+
+        for x in 0..WIDTH {
+            // Coordenadas del mundo
+            let wx = floor_pos.x;
+            let wy = floor_pos.y;
+
+            // Coordenadas de la celda
+            let frac_x = wx - wx.floor();
+            let frac_y = wy - wy.floor();
+
+            let mut tx = (frac_x * tex_w as f32) as i32;
+            let mut ty = (frac_y * tex_h as f32) as i32;
+            tx = tx.clamp(0, tex_w - 1);
+            ty = ty.clamp(0, tex_h - 1);
+
+            let t_idx = (ty * tex_w + tx) as usize;
+            let rgba = floor_tex.pixels[t_idx];
+
+            let i = row_start + x * 4;
+            frame[i..i + 4].copy_from_slice(&rgba.to_le_bytes());
+
+            floor_pos += step;
+        }
+    }
+}
+
+/* LAS PERADES */
+
+fn cast_walls_textured(frame: &mut [u8], world: &World, player: &Player, zbuf: &mut [f32; WIDTH]) {
     for x in 0..WIDTH {
         let camera_x = 2.0 * (x as f32) / (WIDTH as f32) - 1.0;
         let ray_dir = player.dir + player.plane * camera_x;
@@ -91,7 +154,7 @@ fn cast_walls(frame: &mut [u8], world: &World, player: &Player, zbuf: &mut [f32;
         };
 
         // DDA
-        let mut side = 0;
+        let mut side = 0; // 0:x, 1:y
         loop {
             if side_dist_x < side_dist_y {
                 side_dist_x += delta_dist.x;
@@ -102,34 +165,76 @@ fn cast_walls(frame: &mut [u8], world: &World, player: &Player, zbuf: &mut [f32;
                 map_y += step_y;
                 side = 1;
             }
-            if world.is_wall(map_x, map_y) {
-                break;
-            }
+            if world.is_wall(map_x, map_y) { break; }
         }
 
         let perp_dist = if side == 0 {
             (map_x as f32 - player.pos.x + (1 - step_x) as f32 / 2.0) / ray_dir.x
         } else {
             (map_y as f32 - player.pos.y + (1 - step_y) as f32 / 2.0) / ray_dir.y
-        };
-        let perp_dist = perp_dist.max(0.0001);
+        }.max(0.0001);
         zbuf[x] = perp_dist;
 
         let line_h = (HEIGHT as f32 / perp_dist) as i32;
         let draw_start = (-line_h / 2 + (HEIGHT as i32) / 2).clamp(0, HEIGHT as i32 - 1);
-        let draw_end = (line_h / 2 + (HEIGHT as i32) / 2).clamp(0, HEIGHT as i32 - 1);
+        let draw_end   = ( line_h / 2 + (HEIGHT as i32) / 2).clamp(0, HEIGHT as i32 - 1);
 
         let id = world.tile_id(map_x, map_y);
-        let base = id_to_color(id);
-        let shade = (1.0 / (1.0 + 0.1 * perp_dist)).min(1.0) * if side == 1 { 0.85 } else { 1.0 };
-        let color = mul_color(base, shade as f32);
 
-        for y in draw_start..=draw_end {
-            let i = (y as usize * WIDTH + x) * 4;
-            frame[i..i + 4].copy_from_slice(&color.to_le_bytes());
+        // Coordenada de impacto en el muro
+        let mut wall_x = if side == 0 {
+            player.pos.y + perp_dist * ray_dir.y
+        } else {
+            player.pos.x + perp_dist * ray_dir.x
+        };
+        wall_x -= wall_x.floor();
+
+        let shade = (1.0 / (1.0 + 0.1 * perp_dist)).min(1.0) * if side == 1 { 0.85 } else { 1.0 };
+
+        if let Some(tex) = world.textures.get(&id) {
+            let tex_w = tex.w as i32;
+            let tex_h = tex.h as i32;
+
+            let mut tex_x = (wall_x * tex_w as f32) as i32;
+            if side == 0 && ray_dir.x > 0.0 { tex_x = tex_w - tex_x - 1; }
+            if side == 1 && ray_dir.y < 0.0 { tex_x = tex_w - tex_x - 1; }
+            tex_x = tex_x.clamp(0, tex_w - 1);
+
+            let tex_step = (tex_h as f32) / (line_h as f32);
+            let mut tex_pos = (draw_start - (HEIGHT as i32)/2 + line_h/2) as f32 * tex_step;
+
+            for y in draw_start..=draw_end {
+                let mut tex_y = tex_pos as i32;
+                tex_pos += tex_step;
+                tex_y = tex_y.clamp(0, tex_h - 1);
+
+                let t_idx = (tex_y * tex_w + tex_x) as usize;
+                let mut rgba = tex.pixels[t_idx];
+                rgba = shade_rgba(rgba, shade);
+                let i = (y as usize * WIDTH + x) * 4;
+                frame[i..i + 4].copy_from_slice(&rgba.to_le_bytes());
+            }
+        } else {
+            // Fallback color 
+            let base = id_to_color(id);
+            let color = mul_color(base, shade as f32);
+            for y in draw_start..=draw_end {
+                let i = (y as usize * WIDTH + x) * 4;
+                frame[i..i + 4].copy_from_slice(&color.to_le_bytes());
+            }
         }
     }
 }
+
+fn shade_rgba(c: u32, k: f32) -> u32 {
+    let [r, g, b, a] = c.to_le_bytes();
+    let r = ((r as f32) * k).clamp(0.0, 255.0) as u8;
+    let g = ((g as f32) * k).clamp(0.0, 255.0) as u8;
+    let b = ((b as f32) * k).clamp(0.0, 255.0) as u8;
+    u32::from_le_bytes([r, g, b, a])
+}
+
+/* AUX / MINIMAP / TEXT  */
 
 fn id_to_color(id: u8) -> u32 {
     match id {
@@ -158,17 +263,13 @@ fn draw_minimap(frame: &mut [u8], world: &World, player: &Player) {
     let scale = 4;
     let margin = 4;
     let w = (world.map.width as usize) * scale;
-    let h = (world.map.height as usize) * scale;
     let origin_x = WIDTH - margin - w;
     let origin_y = margin;
+
     for my in 0..world.map.height {
         for mx in 0..world.map.width {
             let id = world.tile_id(mx, my);
-            let color = if id == 0 {
-                0x00000088
-            } else {
-                mul_color(id_to_color(id), 0.6)
-            };
+            let color = if id == 0 { 0x00000088 } else { mul_color(id_to_color(id), 0.6) };
             fill_rect(
                 frame,
                 origin_x + (mx as usize) * scale,
@@ -179,6 +280,7 @@ fn draw_minimap(frame: &mut [u8], world: &World, player: &Player) {
             );
         }
     }
+    // jugador
     let px = origin_x as i32 + (player.pos.x as i32) * (scale as i32);
     let py = origin_y as i32 + (player.pos.y as i32) * (scale as i32);
     fill_rect(frame, px as usize, py as usize, 3, 3, 0xffffffff);
@@ -187,41 +289,33 @@ fn draw_minimap(frame: &mut [u8], world: &World, player: &Player) {
 fn fill_rect(frame: &mut [u8], x: usize, y: usize, w: usize, h: usize, color: u32) {
     for yy in 0..h {
         let yy2 = y + yy;
-        if yy2 >= HEIGHT {
-            break;
-        }
+        if yy2 >= HEIGHT { break; }
         let row = yy2 * WIDTH * 4;
         for xx in 0..w {
             let xx2 = x + xx;
-            if xx2 >= WIDTH {
-                break;
-            }
+            if xx2 >= WIDTH { break; }
             let i = row + xx2 * 4;
             frame[i..i + 4].copy_from_slice(&color.to_le_bytes());
         }
     }
 }
 
-// --- Texto bitmap muy simple ---
+// --- Texto bitmap (ya sin espejo) ---
 
 fn draw_centered_text(frame: &mut [u8], s: &str, y: i32) {
-    let w = (s.len() as i32) * 6;
+    let w = (s.len() as i32) * 6; 
     let x = ((WIDTH as i32) - w) / 2;
     draw_text(frame, x, y, s);
 }
 
 pub fn draw_text(frame: &mut [u8], mut x: i32, y: i32, s: &str) {
     for ch in s.chars() {
-        if ch == ' ' {
-            x += 6;
-            continue;
-        }
+        if ch == ' ' { x += 6; continue; }
         draw_char(frame, x, y, ch);
         x += 6;
     }
 }
 
-// ARREGLAR EFECTO ESPEJO
 fn draw_char(frame: &mut [u8], x: i32, y: i32, ch: char) {
     let glyph = font5x7(ch);
     for (yy, row) in glyph.iter().enumerate() {

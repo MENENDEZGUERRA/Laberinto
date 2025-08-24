@@ -4,8 +4,8 @@ use crate::world::World;
 
 pub struct Player {
     pub pos: Vec2,
-    pub dir: Vec2,   // dirección hacia delante
-    pub plane: Vec2, // plano de cámara (perpendicular a dir), controla FOV
+    pub dir: Vec2,   // PARA ADELANTE ( SE PSUPONE)
+    pub plane: Vec2, // FOV
     pub speed_move: f32,
     pub speed_rot: f32,
     pub radius: f32,
@@ -15,7 +15,7 @@ impl Player {
     pub fn from_world_spawn(world: &World) -> Self {
         let dir_rad = world.player_dir_deg.to_radians();
         let dir = Vec2::new(dir_rad.cos(), dir_rad.sin());
-        let plane = Vec2::new(-dir.y, dir.x) * 0.66; // ~FOV 66° clásico
+        let plane = Vec2::new(-dir.y, dir.x) * 0.90; // ~FOV 66° clásico
         Self {
             pos: world.player_spawn,
             dir,
@@ -27,7 +27,7 @@ impl Player {
     }
 
     pub fn update(&mut self, world: &World, input: &mut InputState, dt: f32) {
-        // Rotación por teclas y mouse (horizontal)
+        // Giro
         let mut rot = 0.0;
         if input.rotate_left {
             rot -= 1.0;
@@ -59,7 +59,7 @@ impl Player {
         }
         let step = move_dir * self.speed_move * dt;
 
-        // Colisiones (separado por ejes para sliding)
+        // Colisiones
         let next_x = self.pos + Vec2::new(step.x, 0.0);
         if !collides(world, next_x, self.radius) {
             self.pos = next_x;
