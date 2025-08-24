@@ -1,13 +1,14 @@
 {
+  "name": "Primero",
   "width": 16,
-  "height": 16,
+  "height": 8,
   "tiles": [
     "1111111111111111",
     "1000000000000001",
-    "1022200003333001",
     "1000000000000001",
     "1000000000000001",
-    "1000044440000001",
+    "1000000000000001",
+    "1000000000000001",
     "1000000000000001",
     "11111111111111E1"
   ],
@@ -16,6 +17,7 @@
     "1": "assets/textures/wall_1.png",
     "2": "assets/textures/wall_2.png",
     "3": "assets/textures/wall_3.png",
-    "4": "assets/textures/wall_4.png"
-  }
+    "4": "assets/textures/wall_1.png"
+  },
+  "exit": { "tile": { "x": 14, "y": 7 } }
 }

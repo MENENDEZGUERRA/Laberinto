@@ -1,14 +1,13 @@
-use anyhow::Result;
-use env_logger;
-use log::{error, info};
-
 mod app;
+mod audio;
+mod input;
+mod player;
+mod render;
+mod ui;
+mod world;
+mod sprite;
 
-fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     env_logger::init();
-    if let Err(e) = app::run() {
-        error!("Fatal error: {e:?}");
-        std::process::exit(1);
-    }
-    Ok(())
+    app::run()
 }
