@@ -19,9 +19,8 @@ Tema libre inspirado en The Binding of Isaac (fan tribute, sin ánimo de lucro).
 
 🟦 Pantalla de bienvenida y ✅ pantalla de éxito (al tocar el tile de salida).
 
-🔊 Música de fondo + efectos (OGG/WAV en assets/audio/).
+🔊 Música de fondo (pendiente) + efectos
 
-🧟 Tema: The Binding of Isaac: Cutre Edition (estética simple + cutre vibes 😅).
 
 ## 🧰 Tecnologías
 
