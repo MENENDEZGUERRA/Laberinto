@@ -39,7 +39,7 @@ pub fn run() -> Result<()> {
     // Audio 
     let mut audio = Audio::new().ok();
     if let Some(a) = &mut audio {
-        let _ = a.play_music_loop("assets/audio/bgm.ogg");
+        let _ = a.play_music_loop("assets/audio/bgm.ogg"); // NOTA FUTURO YO: IMPLEMENTA ESTO (AUN NO ENCUENTRO EL LOOP)
     }
 
     // Loop temporal
